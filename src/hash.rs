@@ -33,9 +33,9 @@ impl HashTable {
         }
     }
 
-    pub fn get_chain(&self, index: u32) -> u32 {
-        assert!(index < self.chain_count);
-        let index = self.bucket_count + index;
+    pub fn get_chain(&self, chain_index: u32) -> u32 {
+        assert!(chain_index < self.chain_count);
+        let index = self.bucket_count + chain_index;
         unsafe {
             let ptr = (&self.first_bucket as *const u32).offset(index as isize);
             *ptr
