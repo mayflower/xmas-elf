@@ -5,7 +5,16 @@ use std::env;
 use std::process;
 use xmas_elf::ElfFile;
 use xmas_elf::dynamic;
+use xmas_elf::program;
 use xmas_elf::sections;
+use xmas_elf::symbol_table::Entry;
+
+#[derive(Debug)]
+enum Relro {
+    None,
+    Partial,
+    Full,
+}
 
 // Note if running on a 32bit system, then reading Elf64 files probably will not
 // work (maybe if the size of the file in bytes is < u32::Max).
@@ -25,19 +34,25 @@ fn open_file<P: AsRef<Path>>(name: P) -> Vec<u8> {
 fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
     let buf = open_file(binary_path);
     let elf_file = ElfFile::new(&buf).unwrap();
-    let mut bind_now = false;
     let mut stack_canary = false;
     let mut pie = false;
 
+    let mut relro = if elf_file.program_iter().any(|ph| ph.get_type() == Ok(program::Type::GnuRelro)) {
+        Relro::Partial
+    } else {
+        Relro::None
+    };
+
     let mut sect_iter = elf_file.section_iter();
+
     // Skip the first (dummy) section
     sect_iter.next();
     for sect in sect_iter {
-        bind_now = match sect.get_data(&elf_file) {
-            Ok(sections::SectionData::Dynamic64(ds)) => ds.iter().any(
+        relro = match sect.get_data(&elf_file) {
+            Ok(sections::SectionData::Dynamic64(ds)) => if ds.iter().any(
                 |d| d.get_tag().map(|t| t == dynamic::Tag::BindNow).unwrap_or(false)
-            ),
-            _ => bind_now
+            ) { Relro::Full } else { relro },
+            _ => relro
         };
         pie = match sect.get_data(&elf_file) {
             Ok(sections::SectionData::Dynamic64(ds)) => ds.iter().any(
@@ -58,7 +73,7 @@ fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
         };
     }
 
-    println!("BIND_NOW: {}", bind_now);
+    println!("RELRO: {:?}", relro);
     println!("STACK_CANARY: {}", stack_canary);
     println!("PIE: {}", pie);
 }
