@@ -18,3 +18,8 @@ name = "xmas_elf"
 path = "src/bin/main.rs"
 name = "xmas_elf"
 doc = false
+
+[[bin]]
+path = "src/bin/checksec.rs"
+name = "checksec"
+doc = false
