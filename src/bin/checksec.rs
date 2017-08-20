@@ -31,11 +31,13 @@ fn open_file<P: AsRef<Path>>(name: P) -> Vec<u8> {
     buf
 }
 
+// TODO handle ELF32
 fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
     let buf = open_file(binary_path);
     let elf_file = ElfFile::new(&buf).unwrap();
     let mut stack_canary = false;
     let mut pie = false;
+    let mut pic = true;
 
     let mut relro = if elf_file.program_iter().any(|ph| ph.get_type() == Ok(program::Type::GnuRelro)) {
         Relro::Partial
@@ -43,11 +45,7 @@ fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
         Relro::None
     };
 
-    let mut sect_iter = elf_file.section_iter();
-
-    // Skip the first (dummy) section
-    sect_iter.next();
-    for sect in sect_iter {
+    for sect in elf_file.section_iter() {
         relro = match sect.get_data(&elf_file) {
             Ok(sections::SectionData::Dynamic64(ds)) => if ds.iter().any(
                 |d| d.get_tag().map(|t| t == dynamic::Tag::BindNow).unwrap_or(false)
@@ -64,7 +62,12 @@ fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
             ),
             _ => pie
         };
-
+        pic = match sect.get_data(&elf_file) {
+            Ok(sections::SectionData::Dynamic64(ds)) => !ds.iter().any(
+                |d| d.get_tag().map(|t| t == dynamic::Tag::TextRel).unwrap_or(false)
+            ),
+            _ => pic
+        };
         stack_canary = match sect.get_data(&elf_file) {
             Ok(sections::SectionData::DynSymbolTable64(st)) => st.iter().any(
                 |e| e.get_name(&elf_file).map(|n| n == "__stack_chk_fail").unwrap_or(false)
@@ -76,6 +79,7 @@ fn display_binary_information<P: AsRef<Path>>(binary_path: P) {
     println!("RELRO: {:?}", relro);
     println!("STACK_CANARY: {}", stack_canary);
     println!("PIE: {}", pie);
+    println!("PIC: {}", pic);
 }
 
 // TODO make this whole thing more library-like
